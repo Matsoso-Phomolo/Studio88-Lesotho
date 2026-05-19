@@ -1,22 +1,14 @@
-from collections.abc import Generator
-
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-from app.config import settings
+DATABASE_URL = "postgresql://postgres:%40Master5725%23@localhost:5432/studio88_lesotho"
 
+engine = create_engine(DATABASE_URL)
 
-class Base(DeclarativeBase):
-    pass
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
 
-
-engine = create_engine(settings.database_url, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def get_db() -> Generator:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+Base = declarative_base()

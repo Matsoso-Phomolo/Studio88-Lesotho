@@ -1,82 +1,319 @@
-from pathlib import Path
-
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, Depends, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from typing import Optional
 
-from app.config import settings
-from app.routers import (
-    audit_logs,
-    applications,
-    caretakers,
-    dashboard,
-    landlords,
-    listings,
-    notifications,
-    occupancies,
-    payment_submissions,
-    payments,
-    properties,
-    public_listings,
-    rent_dues,
-    rooms,
-    support_tickets,
-    tenant_accounts,
-    tenant_portal,
-    tenants,
-    transfers,
-    uploads,
-    users,
-)
+from app.database import SessionLocal, engine, Base
+from app import models, schemas, crud
+from app.utils.security import create_access_token, decode_access_token
 
-app = FastAPI(title="LineLink API", version="0.1.0")
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Studio 88 Lesotho API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origin_list,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.get("/health", tags=["health"])
-def health_check() -> dict[str, str]:
-    return {"status": "ok", "service": "LineLink API"}
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-app.include_router(users.router)
-app.include_router(landlords.router)
-app.include_router(caretakers.router)
-app.include_router(properties.router)
-app.include_router(rooms.router)
-app.include_router(tenants.router)
-app.include_router(occupancies.router)
-app.include_router(rent_dues.router)
-app.include_router(payments.router)
-app.include_router(payment_submissions.router)
-app.include_router(transfers.router)
-app.include_router(listings.router)
-app.include_router(public_listings.router)
-app.include_router(tenant_accounts.router)
-app.include_router(tenant_portal.router)
-app.include_router(support_tickets.router)
-app.include_router(uploads.router)
-app.include_router(notifications.router)
-app.include_router(audit_logs.router)
-app.include_router(applications.router)
-app.include_router(dashboard.router)
+def get_current_user(
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing authentication token")
 
-if (FRONTEND_DIST / "assets").exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
+    token = authorization.replace("Bearer ", "", 1).strip()
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired authentication token")
+
+    user = crud.get_user_by_email(db, payload.get("sub"))
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Inactive or unknown user")
+    return user
 
 
-@app.get("/", include_in_schema=False)
-def serve_frontend() -> FileResponse:
-    index_path = FRONTEND_DIST / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
-    return FileResponse(PROJECT_ROOT / "frontend" / "index.html")
+def require_roles(*roles: str):
+    allowed_roles = {role.upper() for role in roles}
+
+    def checker(current_user: models.User = Depends(get_current_user)):
+        if current_user.role.upper() not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return current_user
+
+    return checker
+
+
+@app.get("/")
+def root():
+    return {"message": "Studio 88 Lesotho backend is running"}
+
+
+@app.post("/stores", response_model=schemas.StoreRead)
+def create_store(
+    store: schemas.StoreCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.create_store(db, store)
+
+
+@app.get("/stores", response_model=list[schemas.StoreRead])
+def get_stores(db: Session = Depends(get_db)):
+    return crud.get_stores(db)
+
+
+@app.get("/stores/{store_id}", response_model=schemas.StoreRead)
+def get_store(store_id: int, db: Session = Depends(get_db)):
+    store = crud.get_store(db, store_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    return store
+
+
+@app.post("/products", response_model=schemas.ProductRead)
+def create_product(
+    product: schemas.ProductCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.create_product(db, product)
+
+
+@app.get("/products", response_model=list[schemas.ProductRead])
+def get_products(db: Session = Depends(get_db)):
+    return crud.get_products(db)
+
+
+@app.post("/stock", response_model=schemas.StockRead)
+def create_or_update_stock(
+    stock: schemas.StockCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER", "MANAGER")),
+):
+    if current_user.role.upper() == "MANAGER" and stock.store_id != current_user.store_id:
+        raise HTTPException(status_code=403, detail="Managers can only update their own branch stock")
+    return crud.create_or_update_stock(db, stock)
+
+
+@app.get("/stock", response_model=list[schemas.StockRead])
+def get_stock(db: Session = Depends(get_db)):
+    return crud.get_stock(db)
+
+
+@app.get("/stores/{store_id}/stock", response_model=list[schemas.StockRead])
+def get_stock_by_store(store_id: int, db: Session = Depends(get_db)):
+    return crud.get_stock_by_store(db, store_id)
+
+
+@app.get("/manager/stock", response_model=list[schemas.StockRead])
+def get_manager_stock(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("MANAGER")),
+):
+    return crud.get_stock_by_store(db, current_user.store_id)
+
+
+@app.post("/promotions", response_model=schemas.PromotionRead)
+def create_promotion(
+    promotion: schemas.PromotionCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.create_promotion(db, promotion)
+
+
+@app.get("/promotions", response_model=list[schemas.PromotionRead])
+def get_promotions(db: Session = Depends(get_db)):
+    return crud.get_promotions(db)
+
+
+@app.post("/users", response_model=schemas.UserRead)
+def create_user(
+    user: schemas.UserCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.create_user(db, user)
+
+
+@app.get("/users", response_model=list[schemas.UserRead])
+def get_users(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.get_users(db)
+
+
+@app.post("/auth/login", response_model=schemas.TokenResponse)
+def login(login_data: schemas.LoginRequest, db: Session = Depends(get_db)):
+    user = crud.authenticate_user(db, login_data.email, login_data.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = create_access_token({
+        "sub": user.email,
+        "role": user.role,
+        "store_id": user.store_id,
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "role": user.role,
+        "full_name": user.full_name,
+        "store_id": user.store_id,
+    }
+
+
+@app.post("/orders", response_model=schemas.OrderRead)
+def create_order(order: schemas.OrderCreate, db: Session = Depends(get_db)):
+    return crud.create_order(db, order)
+
+
+@app.get("/orders", response_model=list[schemas.OrderRead])
+def get_orders(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER", "MANAGER")),
+):
+    if current_user.role.upper() == "MANAGER":
+        return crud.get_orders_by_store(db, current_user.store_id)
+    return crud.get_orders(db)
+
+
+@app.get("/orders/search")
+def search_orders(
+    query: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER", "MANAGER")),
+):
+    return crud.search_orders(db, query, current_user.store_id if current_user.role.upper() == "MANAGER" else None)
+
+
+@app.get("/orders/{order_id}", response_model=schemas.OrderRead)
+def get_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER", "MANAGER")),
+):
+    order = crud.get_order(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if current_user.role.upper() == "MANAGER" and order.store_id != current_user.store_id:
+        raise HTTPException(status_code=403, detail="Managers can only view their own branch orders")
+    return order
+
+
+@app.patch("/orders/{order_id}/status", response_model=schemas.OrderRead)
+def update_order_status(
+    order_id: int,
+    update: schemas.OrderStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER", "MANAGER")),
+):
+    existing_order = crud.get_order(db, order_id)
+    if not existing_order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if current_user.role.upper() == "MANAGER" and existing_order.store_id != current_user.store_id:
+        raise HTTPException(status_code=403, detail="Managers can only update their own branch orders")
+    try:
+        order = crud.update_order_status(db, order_id, update.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return order
+
+
+@app.post("/payments/confirm", response_model=schemas.OrderRead)
+def confirm_payment(payment: schemas.PaymentConfirm, db: Session = Depends(get_db)):
+    try:
+        order = crud.confirm_payment(db, payment)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order/payment not found")
+    return order
+
+
+@app.post("/payments/stripe/create-checkout-session", response_model=schemas.StripeCheckoutSessionRead)
+def create_stripe_checkout_session(session_data: schemas.StripeCheckoutSessionCreate, db: Session = Depends(get_db)):
+    session = crud.create_stripe_checkout_session(db, session_data)
+    if not session:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return session
+
+
+@app.post("/payments/stripe/webhook")
+async def stripe_webhook(
+    request: Request,
+    stripe_signature: Optional[str] = Header(default=None, alias="stripe-signature"),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = await request.body()
+        return crud.handle_stripe_webhook(db, payload, stripe_signature)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/payments/stripe/mark-paid/{order_id}", response_model=schemas.OrderRead)
+def mark_stripe_paid(order_id: int, session_id: Optional[str] = None, db: Session = Depends(get_db)):
+    order = crud.mark_stripe_payment_paid(db, order_id, session_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order/payment not found")
+    return order
+
+
+@app.get("/orders/{order_id}/receipt")
+def get_receipt(order_id: int, db: Session = Depends(get_db)):
+    receipt = crud.get_receipt(db, order_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    return receipt
+
+
+@app.post("/warranty", response_model=schemas.WarrantyRead)
+def create_warranty_claim(claim: schemas.WarrantyCreate, db: Session = Depends(get_db)):
+    try:
+        return crud.create_warranty_claim(db, claim)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/warranty", response_model=list[schemas.WarrantyRead])
+def get_warranty_claims(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.get_warranty_claims(db)
+
+
+@app.patch("/warranty/{claim_id}/status", response_model=schemas.WarrantyRead)
+def update_warranty_status(
+    claim_id: int,
+    update: schemas.WarrantyStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    claim = crud.update_warranty_status(db, claim_id, update.status)
+    if not claim:
+        raise HTTPException(status_code=404, detail="Warranty claim not found")
+    return claim
