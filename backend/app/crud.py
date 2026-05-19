@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from datetime import datetime
 import uuid
 import os
@@ -66,11 +66,33 @@ def create_product(db: Session, product: schemas.ProductCreate):
 
 
 def get_products(db: Session):
-    return db.query(models.Product).all()
+    products = db.query(models.Product).all()
+    changed = False
+    for product in products:
+        if not product.barcode:
+            product.barcode = generate_product_barcode(product.id)
+            changed = True
+    if changed:
+        db.commit()
+    return products
 
 
 def get_product(db: Session, product_id: int):
     return db.query(models.Product).filter(models.Product.id == product_id).first()
+
+
+def generate_product_barcode(product_id: int) -> str:
+    return f"ST88-{product_id}"
+
+
+def update_product_barcode(db: Session, product_id: int, barcode: Optional[str] = None):
+    product = get_product(db, product_id)
+    if not product:
+        return None
+    product.barcode = barcode or generate_product_barcode(product.id)
+    db.commit()
+    db.refresh(product)
+    return product
 
 
 def create_or_update_stock(db: Session, stock: schemas.StockCreate):
@@ -84,6 +106,16 @@ def create_or_update_stock(db: Session, stock: schemas.StockCreate):
     if existing_stock:
         existing_stock.quantity = stock.quantity
         existing_stock.status = status
+        if stock.quantity <= 5:
+            create_notification(
+                db,
+                title="Low stock alert" if stock.quantity > 0 else "Out of stock alert",
+                message=f"Product {stock.product_id} at store {stock.store_id} has quantity {stock.quantity}.",
+                type_="stock",
+                severity="warning" if stock.quantity > 0 else "critical",
+                role_target="MANAGER",
+                store_id=stock.store_id,
+            )
         db.commit()
         db.refresh(existing_stock)
         return existing_stock
@@ -96,6 +128,16 @@ def create_or_update_stock(db: Session, stock: schemas.StockCreate):
     )
 
     db.add(db_stock)
+    if stock.quantity <= 5:
+        create_notification(
+            db,
+            title="Low stock alert" if stock.quantity > 0 else "Out of stock alert",
+            message=f"Product {stock.product_id} at store {stock.store_id} has quantity {stock.quantity}.",
+            type_="stock",
+            severity="warning" if stock.quantity > 0 else "critical",
+            role_target="MANAGER",
+            store_id=stock.store_id,
+        )
     db.commit()
     db.refresh(db_stock)
     return db_stock
@@ -197,6 +239,24 @@ def create_order(db: Session, order: schemas.OrderCreate):
         payment_status="Pending",
     )
     db.add(db_payment)
+    create_notification(
+        db,
+        title="New order",
+        message=f"New order {db_order.order_number} created for {order.customer_full_name}.",
+        type_="order",
+        severity="info",
+        role_target="MANAGER",
+        store_id=order.store_id,
+    )
+    log_audit(
+        db,
+        user_email="customer",
+        user_role="CUSTOMER",
+        action="Create order",
+        entity_type="order",
+        entity_id=db_order.id,
+        description=f"Customer order {db_order.order_number} created.",
+    )
 
     db.commit()
     db.refresh(db_order)
@@ -246,6 +306,16 @@ def update_order_status(db: Session, order_id: int, status: str):
     if status == "Cancelled" and order.status in PAID_ORDER_STATUSES:
         raise ValueError("Paid orders cannot be cancelled. Orders are not refundable.")
     order.status = status
+    if status == "Ready for Collection":
+        create_notification(
+            db,
+            title="Order ready for collection",
+            message=f"Order {order.order_number} is ready for collection.",
+            type_="order",
+            severity="success",
+            role_target="MANAGER",
+            store_id=order.store_id,
+        )
     db.commit()
     db.refresh(order)
     return order
@@ -275,6 +345,15 @@ def confirm_payment(db: Session, payment: schemas.PaymentConfirm):
     db_payment.paid_at = datetime.utcnow()
 
     order.status = "Confirmed"
+    log_audit(
+        db,
+        user_email="customer",
+        user_role="CUSTOMER",
+        action="Confirm payment",
+        entity_type="payment",
+        entity_id=db_payment.id,
+        description=f"{payment_method} payment confirmed for order {order.order_number}.",
+    )
 
     receipt = db.query(models.Receipt).filter(models.Receipt.order_id == order.id).first()
     if not receipt:
@@ -374,6 +453,15 @@ def mark_stripe_payment_paid(db: Session, order_id: int, provider_reference: Opt
     db_payment.paid_at = datetime.utcnow()
     order.status = "Confirmed"
     _ensure_receipt(db, order.id)
+    log_audit(
+        db,
+        user_email="stripe",
+        user_role="PAYMENT_PROVIDER",
+        action="Confirm payment",
+        entity_type="payment",
+        entity_id=db_payment.id,
+        description=f"Stripe payment confirmed for order {order.order_number}.",
+    )
 
     db.commit()
     db.refresh(order)
@@ -425,6 +513,24 @@ def create_warranty_claim(db: Session, claim: schemas.WarrantyCreate):
 
     db_claim = models.WarrantyClaim(**claim.model_dump())
     db.add(db_claim)
+    create_notification(
+        db,
+        title="Warranty request",
+        message=f"Warranty claim created for order {claim.order_id}.",
+        type_="warranty",
+        severity="warning",
+        role_target="ADMIN",
+        store_id=None,
+    )
+    log_audit(
+        db,
+        user_email="customer",
+        user_role="CUSTOMER",
+        action="Create warranty request",
+        entity_type="warranty",
+        entity_id=claim.order_id,
+        description="Customer submitted a warranty claim.",
+    )
     db.commit()
     db.refresh(db_claim)
     return db_claim
@@ -439,6 +545,184 @@ def update_warranty_status(db: Session, claim_id: int, status: str):
     if not claim:
         return None
     claim.status = status
+    log_audit(
+        db,
+        user_email="system",
+        user_role="ADMIN",
+        action="Update warranty status",
+        entity_type="warranty",
+        entity_id=claim.id,
+        description=f"Warranty claim updated to {status}.",
+    )
     db.commit()
     db.refresh(claim)
     return claim
+
+
+def log_audit(
+    db: Session,
+    user_email: str,
+    user_role: str,
+    action: str,
+    entity_type: str,
+    entity_id: Optional[int] = None,
+    description: Optional[str] = None,
+):
+    audit_log = models.AuditLog(
+        user_email=user_email,
+        user_role=user_role,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        description=description,
+    )
+    db.add(audit_log)
+    return audit_log
+
+
+def get_audit_logs(db: Session):
+    return db.query(models.AuditLog).order_by(models.AuditLog.created_at.desc()).limit(100).all()
+
+
+def create_notification(
+    db: Session,
+    title: str,
+    message: str,
+    type_: str,
+    severity: str,
+    role_target: str,
+    store_id: Optional[int] = None,
+):
+    notification = models.Notification(
+        title=title,
+        message=message,
+        type=type_,
+        severity=severity,
+        role_target=role_target,
+        store_id=store_id,
+    )
+    db.add(notification)
+    return notification
+
+
+def get_notifications(db: Session, user):
+    query = db.query(models.Notification)
+    role = user.role.upper()
+    if role == "MANAGER":
+        query = query.filter(
+            models.Notification.role_target == "MANAGER",
+            models.Notification.store_id == user.store_id,
+        )
+    elif role == "ADMIN":
+        query = query.filter(models.Notification.role_target.in_(["ADMIN", "EXECUTIVE", "MANAGER"]))
+    elif role == "DEVELOPER":
+        query = query
+    else:
+        query = query.filter(models.Notification.role_target == role)
+
+    return query.order_by(models.Notification.created_at.desc()).limit(50).all()
+
+
+def mark_notification_read(db: Session, notification_id: int, user):
+    notifications = get_notifications(db, user)
+    notification = next((item for item in notifications if item.id == notification_id), None)
+    if not notification:
+        return None
+    notification.is_read = True
+    db.commit()
+    db.refresh(notification)
+    return notification
+
+
+def get_analytics_overview(db: Session):
+    paid_statuses = ["Confirmed", "Ready for Collection", "Collected"]
+    total_revenue = (
+        db.query(func.coalesce(func.sum(models.Order.total_amount), 0))
+        .filter(models.Order.status.in_(paid_statuses))
+        .scalar()
+    )
+    total_stock = db.query(func.coalesce(func.sum(models.Stock.quantity), 0)).scalar()
+    return {
+        "total_revenue": float(total_revenue or 0),
+        "total_orders": db.query(models.Order).count(),
+        "total_products": db.query(models.Product).count(),
+        "total_stock": int(total_stock or 0),
+        "low_stock_count": db.query(models.Stock).filter(models.Stock.quantity <= 5).count(),
+        "promotions_count": db.query(models.Promotion).filter(models.Promotion.is_active == True).count(),
+    }
+
+
+def get_analytics_branches(db: Session):
+    paid_statuses = ["Confirmed", "Ready for Collection", "Collected"]
+    branches = []
+    for store in db.query(models.Store).all():
+        orders = db.query(models.Order).filter(models.Order.store_id == store.id).all()
+        stock_units = (
+            db.query(func.coalesce(func.sum(models.Stock.quantity), 0))
+            .filter(models.Stock.store_id == store.id)
+            .scalar()
+        )
+        branches.append({
+            "store_id": store.id,
+            "name": store.name,
+            "location": store.location,
+            "orders": len(orders),
+            "revenue": float(sum(float(order.total_amount or 0) for order in orders if order.status in paid_statuses)),
+            "stock_units": int(stock_units or 0),
+            "low_stock": db.query(models.Stock).filter(models.Stock.store_id == store.id, models.Stock.quantity <= 5).count(),
+        })
+    return branches
+
+
+def get_analytics_products(db: Session):
+    movement = []
+    for product in db.query(models.Product).all():
+        ordered_units = (
+            db.query(func.coalesce(func.sum(models.OrderItem.quantity), 0))
+            .filter(models.OrderItem.product_id == product.id)
+            .scalar()
+        )
+        stock_units = (
+            db.query(func.coalesce(func.sum(models.Stock.quantity), 0))
+            .filter(models.Stock.product_id == product.id)
+            .scalar()
+        )
+        movement.append({
+            "product_id": product.id,
+            "name": product.name,
+            "brand": product.brand,
+            "barcode": product.barcode or generate_product_barcode(product.id),
+            "ordered_units": int(ordered_units or 0),
+            "stock_units": int(stock_units or 0),
+        })
+    return sorted(movement, key=lambda item: item["ordered_units"], reverse=True)
+
+
+def get_analytics_revenue(db: Session):
+    paid_statuses = ["Confirmed", "Ready for Collection", "Collected"]
+    return [
+        {
+            "store_id": branch["store_id"],
+            "name": branch["name"],
+            "revenue": branch["revenue"],
+        }
+        for branch in get_analytics_branches(db)
+        if branch["revenue"] >= 0
+    ]
+
+
+def get_analytics_low_stock(db: Session):
+    items = []
+    for stock in db.query(models.Stock).filter(models.Stock.quantity <= 5).all():
+        product = get_product(db, stock.product_id)
+        store = get_store(db, stock.store_id)
+        items.append({
+            "stock_id": stock.id,
+            "store_id": stock.store_id,
+            "store_name": store.name if store else "Unknown Store",
+            "product_id": stock.product_id,
+            "product_name": product.name if product else "Unknown Product",
+            "quantity": stock.quantity,
+            "status": stock.status,
+        })
+    return items

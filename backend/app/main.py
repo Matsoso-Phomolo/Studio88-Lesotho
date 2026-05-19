@@ -2,14 +2,28 @@ import os
 
 from fastapi import FastAPI, Depends, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import SessionLocal, engine, Base
 from app import models, schemas, crud
+from app.services.retail_ai import build_stock_recommendations
 from app.utils.security import create_access_token, decode_access_token
 
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_phase3_schema():
+    inspector = inspect(engine)
+    if "products" in inspector.get_table_names():
+        product_columns = {column["name"] for column in inspector.get_columns("products")}
+        if "barcode" not in product_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE products ADD COLUMN barcode VARCHAR(100)"))
+
+
+ensure_phase3_schema()
 
 app = FastAPI(title="Studio 88 Lesotho API")
 
@@ -109,12 +123,46 @@ def create_product(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
 ):
-    return crud.create_product(db, product)
+    created_product = crud.create_product(db, product)
+    crud.log_audit(
+        db,
+        current_user.email,
+        current_user.role,
+        "Create product",
+        "product",
+        created_product.id,
+        f"Created product {created_product.name}.",
+    )
+    db.commit()
+    return created_product
 
 
 @app.get("/products", response_model=list[schemas.ProductRead])
 def get_products(db: Session = Depends(get_db)):
     return crud.get_products(db)
+
+
+@app.patch("/products/{product_id}/barcode", response_model=schemas.ProductRead)
+def update_product_barcode(
+    product_id: int,
+    update: schemas.ProductBarcodeUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    product = crud.update_product_barcode(db, product_id, update.barcode)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    crud.log_audit(
+        db,
+        current_user.email,
+        current_user.role,
+        "Update barcode",
+        "product",
+        product.id,
+        f"Updated barcode for {product.name}.",
+    )
+    db.commit()
+    return product
 
 
 @app.post("/stock", response_model=schemas.StockRead)
@@ -125,7 +173,18 @@ def create_or_update_stock(
 ):
     if current_user.role.upper() == "MANAGER" and stock.store_id != current_user.store_id:
         raise HTTPException(status_code=403, detail="Managers can only update their own branch stock")
-    return crud.create_or_update_stock(db, stock)
+    updated_stock = crud.create_or_update_stock(db, stock)
+    crud.log_audit(
+        db,
+        current_user.email,
+        current_user.role,
+        "Update stock",
+        "stock",
+        updated_stock.id,
+        f"Stock updated for product {stock.product_id} at store {stock.store_id}.",
+    )
+    db.commit()
+    return updated_stock
 
 
 @app.get("/stock", response_model=list[schemas.StockRead])
@@ -152,7 +211,18 @@ def create_promotion(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
 ):
-    return crud.create_promotion(db, promotion)
+    created_promotion = crud.create_promotion(db, promotion)
+    crud.log_audit(
+        db,
+        current_user.email,
+        current_user.role,
+        "Create promotion",
+        "promotion",
+        created_promotion.id,
+        f"Created promotion for product {promotion.product_id}.",
+    )
+    db.commit()
+    return created_promotion
 
 
 @app.get("/promotions", response_model=list[schemas.PromotionRead])
@@ -188,6 +258,16 @@ def login(login_data: schemas.LoginRequest, db: Session = Depends(get_db)):
         "role": user.role,
         "store_id": user.store_id,
     })
+    crud.log_audit(
+        db,
+        user.email,
+        user.role,
+        "Login",
+        "user",
+        user.id,
+        f"{user.full_name} logged in.",
+    )
+    db.commit()
 
     return {
         "access_token": token,
@@ -252,6 +332,16 @@ def update_order_status(
         order = crud.update_order_status(db, order_id, update.status)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    crud.log_audit(
+        db,
+        current_user.email,
+        current_user.role,
+        "Update order status",
+        "order",
+        order.id,
+        f"Order {order.order_number} updated to {update.status}.",
+    )
+    db.commit()
     return order
 
 
@@ -329,4 +419,91 @@ def update_warranty_status(
     claim = crud.update_warranty_status(db, claim_id, update.status)
     if not claim:
         raise HTTPException(status_code=404, detail="Warranty claim not found")
+    crud.log_audit(
+        db,
+        current_user.email,
+        current_user.role,
+        "Update warranty status",
+        "warranty",
+        claim.id,
+        f"Warranty claim updated to {update.status}.",
+    )
+    db.commit()
     return claim
+
+
+@app.get("/analytics/overview")
+def analytics_overview(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.get_analytics_overview(db)
+
+
+@app.get("/analytics/branches")
+def analytics_branches(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.get_analytics_branches(db)
+
+
+@app.get("/analytics/products")
+def analytics_products(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.get_analytics_products(db)
+
+
+@app.get("/analytics/revenue")
+def analytics_revenue(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.get_analytics_revenue(db)
+
+
+@app.get("/analytics/low-stock")
+def analytics_low_stock(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.get_analytics_low_stock(db)
+
+
+@app.get("/ai/stock-recommendations")
+def ai_stock_recommendations(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER", "MANAGER")),
+):
+    store_id = current_user.store_id if current_user.role.upper() == "MANAGER" else None
+    return build_stock_recommendations(db, store_id)
+
+
+@app.get("/notifications", response_model=list[schemas.NotificationRead])
+def get_notifications(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER", "MANAGER")),
+):
+    return crud.get_notifications(db, current_user)
+
+
+@app.patch("/notifications/{notification_id}/read", response_model=schemas.NotificationRead)
+def mark_notification_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER", "MANAGER")),
+):
+    notification = crud.mark_notification_read(db, notification_id, current_user)
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return notification
+
+
+@app.get("/audit-logs", response_model=list[schemas.AuditLogRead])
+def get_audit_logs(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("ADMIN", "DEVELOPER")),
+):
+    return crud.get_audit_logs(db)

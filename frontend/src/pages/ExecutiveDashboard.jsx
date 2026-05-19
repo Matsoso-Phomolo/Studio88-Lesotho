@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BadgePercent, Banknote, Package, ShoppingBag } from "lucide-react";
+import { AlertTriangle, BadgePercent, Banknote, Brain, Package, ShoppingBag, TrendingUp } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -42,6 +42,14 @@ export default function ExecutiveDashboard() {
   const [stock, setStock] = useState([]);
   const [promotions, setPromotions] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [analytics, setAnalytics] = useState({
+    overview: null,
+    branches: [],
+    products: [],
+    revenue: [],
+    lowStock: [],
+  });
+  const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -49,13 +57,31 @@ export default function ExecutiveDashboard() {
     async function loadData() {
       try {
         setLoading(true);
-        const [storesData, productsData, stockData, promotionsData, ordersData] =
+        const [
+          storesData,
+          productsData,
+          stockData,
+          promotionsData,
+          ordersData,
+          overviewData,
+          branchesData,
+          productsAnalyticsData,
+          revenueData,
+          lowStockData,
+          recommendationsData,
+        ] =
           await Promise.all([
             api.getStores(),
             api.getProducts(),
             api.getStock(),
             api.getPromotions(),
             api.getOrders(),
+            api.getAnalyticsOverview(),
+            api.getAnalyticsBranches(),
+            api.getAnalyticsProducts(),
+            api.getAnalyticsRevenue(),
+            api.getAnalyticsLowStock(),
+            api.getStockRecommendations(),
           ]);
 
         setStores(storesData);
@@ -63,6 +89,14 @@ export default function ExecutiveDashboard() {
         setStock(stockData);
         setPromotions(promotionsData);
         setOrders(ordersData);
+        setAnalytics({
+          overview: overviewData,
+          branches: branchesData,
+          products: productsAnalyticsData,
+          revenue: revenueData,
+          lowStock: lowStockData,
+        });
+        setRecommendations(recommendationsData);
       } catch (err) {
         console.error(err);
         setError("Failed to connect to backend API");
@@ -97,6 +131,7 @@ export default function ExecutiveDashboard() {
   const totalRevenue = orders
     .filter((order) => revenueStatuses.has(order.status))
     .reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
+  const overview = analytics.overview || {};
 
   const branchStock = stores.map((store) => ({
     name: store.name,
@@ -154,11 +189,56 @@ export default function ExecutiveDashboard() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <StatCard title="Total Units" value={totalUnits} subtitle="Across all branches" icon={Package} />
-          <StatCard title="Low Stock Alerts" value={lowStockCount} subtitle="Needs replenishment" icon={AlertTriangle} />
-          <StatCard title="Products on Promotion" value={activePromotions} subtitle="Active campaigns" icon={BadgePercent} />
-          <StatCard title="Total Orders" value={orders.length} subtitle="All branch orders" icon={ShoppingBag} />
-          <StatCard title="Revenue" value={`M ${totalRevenue.toFixed(2)}`} subtitle="Confirmed paid orders" icon={Banknote} />
+          <StatCard title="Total Units" value={overview.total_stock ?? totalUnits} subtitle="Across all branches" icon={Package} />
+          <StatCard title="Low Stock Alerts" value={overview.low_stock_count ?? lowStockCount} subtitle="Needs replenishment" icon={AlertTriangle} />
+          <StatCard title="Products on Promotion" value={overview.promotions_count ?? activePromotions} subtitle="Active campaigns" icon={BadgePercent} />
+          <StatCard title="Total Orders" value={overview.total_orders ?? orders.length} subtitle="All branch orders" icon={ShoppingBag} />
+          <StatCard title="Revenue" value={`M ${Number(overview.total_revenue ?? totalRevenue).toFixed(2)}`} subtitle="Confirmed paid orders" icon={Banknote} />
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
+          <Card className="rounded-3xl border border-white/10 bg-white/[0.04] text-white">
+            <CardHeader className="p-5">
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-red-300" /> Retail intelligence
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 p-5 pt-0">
+              {analytics.branches.slice(0, 5).map((branch) => (
+                <div key={branch.store_id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="font-semibold">{branch.name}</div>
+                      <div className="text-sm text-neutral-400">{branch.orders} orders - {branch.stock_units} units</div>
+                    </div>
+                    <div className="text-right font-semibold text-green-300">M {Number(branch.revenue || 0).toFixed(2)}</div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl border border-white/10 bg-white/[0.04] text-white">
+            <CardHeader className="p-5">
+              <CardTitle className="flex items-center gap-2">
+                <Brain className="h-5 w-5 text-red-300" /> AI stock insights
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 p-5 pt-0">
+              {recommendations.slice(0, 6).map((item) => (
+                <div key={`${item.store_id}-${item.product_id}`} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">{item.product_name}</div>
+                      <div className="text-sm text-neutral-400">{item.store_name} - Qty {item.quantity}</div>
+                    </div>
+                    <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs text-red-200">{item.severity}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-neutral-300">{item.recommendation}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -194,6 +274,52 @@ export default function ExecutiveDashboard() {
                   <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <Card className="rounded-3xl border border-white/10 bg-white/[0.04] text-white">
+            <CardHeader className="p-5">
+              <CardTitle>Product movement</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 p-5 pt-0">
+              {analytics.products.slice(0, 6).map((product) => (
+                <div key={product.product_id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="font-semibold">{product.name}</div>
+                      <div className="text-sm text-neutral-400">{product.brand} - {product.barcode}</div>
+                    </div>
+                    <div className="text-right text-sm text-neutral-300">
+                      {product.ordered_units} sold<br />{product.stock_units} in stock
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl border border-white/10 bg-white/[0.04] text-white">
+            <CardHeader className="p-5">
+              <CardTitle>Promotions performance</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 p-5 pt-0">
+              {promotions.slice(0, 6).map((promotion) => {
+                const product = products.find((item) => item.id === promotion.product_id);
+                const productMovement = analytics.products.find((item) => item.product_id === promotion.product_id);
+                return (
+                  <div key={promotion.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="font-semibold">{promotion.title || product?.name || "Promotion"}</div>
+                        <div className="text-sm text-neutral-400">{promotion.discount_percent}% discount</div>
+                      </div>
+                      <div className="text-sm text-neutral-300">{productMovement?.ordered_units || 0} units moved</div>
+                    </div>
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         </div>

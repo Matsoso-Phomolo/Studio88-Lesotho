@@ -25,6 +25,7 @@ class ProductCreate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
     price: float
+    barcode: Optional[str] = None
     image_url: Optional[str] = None
     is_new: bool = False
 
@@ -194,3 +195,36 @@ class WarrantyRead(WarrantyCreate):
 
 class WarrantyStatusUpdate(BaseModel):
     status: str
+
+
+class ProductBarcodeUpdate(BaseModel):
+    barcode: Optional[str] = None
+
+
+class NotificationRead(BaseModel):
+    id: int
+    title: str
+    message: str
+    type: str
+    severity: str
+    role_target: str
+    store_id: Optional[int]
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AuditLogRead(BaseModel):
+    id: int
+    user_email: str
+    user_role: str
+    action: str
+    entity_type: str
+    entity_id: Optional[int]
+    description: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

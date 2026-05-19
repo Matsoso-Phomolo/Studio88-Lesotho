@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Activity, Database, Server, Users } from "lucide-react";
+import { Activity, Barcode, Database, Server, Users } from "lucide-react";
 
 import { api } from "../api/api";
 import { Badge } from "../components/ui/badge";
@@ -26,6 +26,9 @@ function StatusCard({ title, value, subtitle, icon: Icon, ok }) {
 
 export default function DeveloperDashboard({ user }) {
   const [users, setUsers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [barcodeEdits, setBarcodeEdits] = useState({});
   const [status, setStatus] = useState({
     api: "Checking",
     database: "Checking",
@@ -35,14 +38,18 @@ export default function DeveloperDashboard({ user }) {
 
   async function loadData() {
     try {
-      const [rootData, usersData, storesData, ordersData] = await Promise.all([
+      const [rootData, usersData, storesData, ordersData, productsData, auditLogData] = await Promise.all([
         api.root(),
         api.getUsers(),
         api.getStores(),
         api.getOrders(),
+        api.getProducts(),
+        api.getAuditLogs(),
       ]);
 
       setUsers(usersData);
+      setProducts(productsData);
+      setAuditLogs(auditLogData);
       setStatus({
         api: rootData?.message ? "Online" : "Unknown",
         database: storesData.length >= 0 ? "Connected" : "Unknown",
@@ -61,6 +68,11 @@ export default function DeveloperDashboard({ user }) {
   }, []);
 
   const responsiblePerson = user?.full_name || "Matsoso Phomolo";
+
+  async function saveBarcode(productId) {
+    await api.updateProductBarcode(productId, barcodeEdits[productId] || "");
+    await loadData();
+  }
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
@@ -125,6 +137,60 @@ export default function DeveloperDashboard({ user }) {
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-neutral-300">
                 Current environment: {import.meta.env.VITE_API_BASE_URL || "API URL not configured"}
               </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1fr]">
+          <Card className="rounded-3xl border border-white/10 bg-white/[0.04] text-white">
+            <CardHeader className="p-5">
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-red-300" /> Audit logs
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid max-h-[520px] gap-3 overflow-auto p-5 pt-0">
+              {auditLogs.map((log) => (
+                <div key={log.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="font-semibold">{log.action}</div>
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs">{log.user_role}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-neutral-400">{log.description}</p>
+                  <p className="mt-2 text-xs text-neutral-500">{log.user_email} - {new Date(log.created_at).toLocaleString()}</p>
+                </div>
+              ))}
+              {auditLogs.length === 0 && <p className="text-sm text-neutral-400">No audit logs yet.</p>}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl border border-white/10 bg-white/[0.04] text-white">
+            <CardHeader className="p-5">
+              <CardTitle className="flex items-center gap-2">
+                <Barcode className="h-5 w-5 text-red-300" /> Barcode foundation
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid max-h-[520px] gap-3 overflow-auto p-5 pt-0">
+              {products.map((product) => (
+                <div key={product.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="font-semibold">{product.name}</div>
+                  <div className="text-sm text-neutral-400">{product.brand}</div>
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      value={barcodeEdits[product.id] ?? product.barcode ?? `ST88-${product.id}`}
+                      onChange={(event) =>
+                        setBarcodeEdits((current) => ({ ...current, [product.id]: event.target.value }))
+                      }
+                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                    />
+                    <button
+                      onClick={() => saveBarcode(product.id)}
+                      className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </div>

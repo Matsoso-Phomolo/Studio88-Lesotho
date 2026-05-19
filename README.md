@@ -19,6 +19,11 @@ Professional retail management and branch operations platform for Studio 88 Leso
 - Warranty validation
 - Promotions and stock visibility
 - Low-stock monitoring
+- Retail analytics endpoints
+- Rule-based AI stock recommendations
+- Notifications panel
+- Audit logs
+- Barcode foundation
 
 ## Tech Stack
 
@@ -108,6 +113,51 @@ Production environment variables:
 
 - Render: `DATABASE_URL`, `JWT_SECRET_KEY`, `STRIPE_SECRET_KEY`, `FRONTEND_ORIGIN`
 - Vercel: `VITE_API_BASE_URL`
+
+## Phase 3: Retail Intelligence + AI Layer
+
+Phase 3 upgrades the system into a Retail Operations Intelligence Platform.
+
+Analytics:
+
+- Executive overview metrics for revenue, orders, stock, products, and promotions.
+- Branch-level performance summaries.
+- Product movement reporting.
+- Low-stock intelligence.
+
+AI stock recommendations:
+
+- `0` quantity -> Restock immediately.
+- `<= 5` quantity -> Low stock: reorder soon.
+- High order movement -> High demand product.
+- Low movement with high stock -> Consider promotion.
+
+Notifications:
+
+- Low stock and out-of-stock alerts.
+- New order notifications.
+- Order ready for collection notifications.
+- Warranty request notifications.
+
+Audit logs:
+
+- Login tracking.
+- Order creation.
+- Payment confirmation.
+- Order status updates.
+- Stock updates.
+- Promotion creation.
+- Warranty status updates.
+
+Barcode foundation:
+
+- Products support an optional barcode.
+- Missing values can be generated as `ST88-PRODUCTID`.
+- Developer tools include barcode management.
+
+Realtime readiness:
+
+- Backend and frontend placeholders are included for future live stock, order, and notification updates.
 
 ## Security
 

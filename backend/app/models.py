@@ -30,6 +30,7 @@ class Product(Base):
     category = Column(String(100))
     description = Column(Text)
     price = Column(Numeric(10, 2), nullable=False)
+    barcode = Column(String(100), unique=True, index=True)
     image_url = Column(Text)
     is_new = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
@@ -184,4 +185,31 @@ class WarrantyClaim(Base):
     customer_phone = Column(String(30), nullable=False)
     reason = Column(Text, nullable=False)
     status = Column(String(30), default="Pending")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(150), nullable=False)
+    message = Column(Text, nullable=False)
+    type = Column(String(50), nullable=False)
+    severity = Column(String(30), nullable=False, default="info")
+    role_target = Column(String(30), nullable=False, default="ADMIN")
+    store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"))
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String(150), nullable=False)
+    user_role = Column(String(30), nullable=False)
+    action = Column(String(100), nullable=False)
+    entity_type = Column(String(80), nullable=False)
+    entity_id = Column(Integer)
+    description = Column(Text)
     created_at = Column(DateTime, server_default=func.now())

@@ -9,6 +9,7 @@ import CustomerReceipt from "./pages/CustomerReceipt";
 import OrdersManagement from "./pages/OrdersManagement";
 import WarrantyClaims from "./pages/WarrantyClaims";
 import { api } from "./api/api";
+import NotificationBell from "./components/NotificationBell";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -209,9 +210,10 @@ function App() {
         {user?.role === "ADMIN" && (
           <button onClick={() => navigatePage("warranty")}>Warranty</button>
         )}
+        {user && <NotificationBell user={user} />}
         <button
           onClick={handleLogout}
-          className="ml-auto rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700"
+          className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700"
         >
           Logout
         </button>

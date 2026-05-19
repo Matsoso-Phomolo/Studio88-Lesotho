@@ -249,6 +249,9 @@ export default function CustomerDashboard({ onCheckout }) {
                         <Store className="h-4 w-4" />
                         Status: {item.status}
                       </div>
+                      <div className="mt-2 text-xs uppercase tracking-wide text-neutral-500">
+                        Barcode: {item.barcode || `ST88-${item.productId}`}
+                      </div>
                       <div className="mt-4 flex items-center justify-between gap-4">
                         <div>
                           <div className="text-xl font-bold">M {item.price}</div>

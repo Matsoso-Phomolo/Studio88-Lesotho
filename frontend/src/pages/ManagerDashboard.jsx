@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Package, ShoppingBag, Store } from "lucide-react";
+import { AlertTriangle, Brain, Package, ShoppingBag, Store } from "lucide-react";
 
 import { api } from "../api/api";
 import { Badge } from "../components/ui/badge";
@@ -39,23 +39,26 @@ export default function ManagerDashboard({ user, onReceipt }) {
   const [products, setProducts] = useState([]);
   const [stock, setStock] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   async function loadData() {
     try {
       setLoading(true);
-      const [storesData, productsData, stockData, ordersData] = await Promise.all([
+      const [storesData, productsData, stockData, ordersData, recommendationsData] = await Promise.all([
         api.getStores(),
         api.getProducts(),
         api.getManagerStock(),
         api.getOrders(),
+        api.getStockRecommendations(),
       ]);
 
       setStores(storesData);
       setProducts(productsData);
       setStock(stockData);
       setOrders(ordersData);
+      setRecommendations(recommendationsData);
     } catch (err) {
       console.error(err);
       setError("Failed to connect to backend API");
@@ -191,6 +194,29 @@ export default function ManagerDashboard({ user, onReceipt }) {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] text-white">
+          <CardHeader className="p-5">
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5 text-red-300" /> AI branch stock recommendations
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 p-5 pt-0 md:grid-cols-2">
+            {recommendations.slice(0, 6).map((item) => (
+              <div key={`${item.store_id}-${item.product_id}`} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">{item.product_name}</div>
+                    <div className="text-sm text-neutral-400">Qty {item.quantity} - {item.ordered_units} ordered</div>
+                  </div>
+                  <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs text-red-200">{item.severity}</span>
+                </div>
+                <p className="mt-2 text-sm text-neutral-300">{item.recommendation}</p>
+              </div>
+            ))}
+            {recommendations.length === 0 && <p className="text-sm text-neutral-400">No stock recommendations yet.</p>}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

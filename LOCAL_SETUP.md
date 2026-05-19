@@ -160,6 +160,102 @@ Stripe:
 - Stripe handles card details securely.
 - Webhook endpoint: `/payments/stripe/webhook`
 
+## Phase 3: Retail Intelligence + AI Layer
+
+Analytics endpoints:
+
+```text
+GET /analytics/overview
+GET /analytics/branches
+GET /analytics/products
+GET /analytics/revenue
+GET /analytics/low-stock
+```
+
+Analytics access:
+
+- Requires `ADMIN` or `DEVELOPER`.
+- Used by the Executive dashboard for total revenue, total orders, top branches, low-stock products, promotions performance, and product movement.
+
+AI stock recommendation endpoint:
+
+```text
+GET /ai/stock-recommendations
+```
+
+AI recommendation rules:
+
+- Quantity `0`: Restock immediately.
+- Quantity `<= 5`: Low stock: reorder soon.
+- High order volume: High demand product.
+- Low order volume with high stock: Consider promotion.
+
+Manager AI scope:
+
+- Managers only receive recommendations for their assigned `store_id`.
+- Executives and developers can view all branch recommendations.
+
+Notifications:
+
+```text
+GET /notifications
+PATCH /notifications/{id}/read
+```
+
+Notification rules:
+
+- Low stock.
+- Out of stock.
+- New order.
+- Order ready for collection.
+- Warranty request.
+
+Notifications respect role and store scope:
+
+- Managers see their branch notifications.
+- Executives see operational notifications.
+- Developers can inspect all notifications.
+
+Audit logs:
+
+```text
+GET /audit-logs
+```
+
+Audit access:
+
+- Requires `ADMIN` or `DEVELOPER`.
+- Developer dashboard displays recent audit activity.
+
+Tracked actions:
+
+- Login.
+- Create order.
+- Confirm payment.
+- Update order status.
+- Update stock.
+- Create promotion.
+- Warranty approve/reject or status update.
+
+Barcode foundation:
+
+```text
+PATCH /products/{id}/barcode
+```
+
+Barcode rules:
+
+- Products have an optional `barcode` field.
+- If missing, the system can generate `ST88-PRODUCTID`.
+- Customer product cards display barcode values.
+- Developer tools can edit barcode values.
+
+Realtime ready structure:
+
+- Backend placeholder: `backend/app/realtime.py`
+- Frontend placeholder: `frontend/src/realtime.js`
+- Future TODOs include live stock updates, live order updates, and live notifications.
+
 ## Deployment
 
 Render backend:

@@ -32,6 +32,21 @@ export const api = {
   getStock: () => request("/stock"),
   getManagerStock: () => request("/manager/stock"),
   getPromotions: () => request("/promotions"),
+  getAnalyticsOverview: () => request("/analytics/overview"),
+  getAnalyticsBranches: () => request("/analytics/branches"),
+  getAnalyticsProducts: () => request("/analytics/products"),
+  getAnalyticsRevenue: () => request("/analytics/revenue"),
+  getAnalyticsLowStock: () => request("/analytics/low-stock"),
+  getStockRecommendations: () => request("/ai/stock-recommendations"),
+  getNotifications: () => request("/notifications"),
+  markNotificationRead: (notificationId) =>
+    request(`/notifications/${notificationId}/read`, { method: "PATCH" }),
+  getAuditLogs: () => request("/audit-logs"),
+  updateProductBarcode: (productId, barcode) =>
+    request(`/products/${productId}/barcode`, {
+      method: "PATCH",
+      body: JSON.stringify({ barcode }),
+    }),
 
   createOrder: (data) => request("/orders", { method: "POST", body: JSON.stringify(data) }),
   getOrders: () => request("/orders"),

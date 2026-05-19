@@ -23,6 +23,7 @@ def repair_schema() -> None:
     add_column("stores", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 
     add_column("products", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    add_column("products", "barcode", "VARCHAR(100)")
 
     add_column("stock", "last_updated", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 
