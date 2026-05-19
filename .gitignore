@@ -3,6 +3,9 @@ dist/
 __pycache__/
 *.py[cod]
 *.log
+*.db
+*.sqlite
+*.sqlite3
 .env
 .venv/
 venv/

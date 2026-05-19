@@ -1,6 +1,10 @@
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "");
 
 async function request(endpoint, options = {}) {
+  if (!API_BASE_URL) {
+    throw new Error("VITE_API_BASE_URL is not configured");
+  }
+
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: {

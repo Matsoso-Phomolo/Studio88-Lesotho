@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Depends, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -11,14 +13,20 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Studio 88 Lesotho API")
 
+local_frontend_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
+configured_frontend_origin = os.getenv("FRONTEND_ORIGIN")
+allowed_origins = local_frontend_origins + (
+    [configured_frontend_origin] if configured_frontend_origin else []
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,6 +74,11 @@ def require_roles(*roles: str):
 @app.get("/")
 def root():
     return {"message": "Studio 88 Lesotho backend is running"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 @app.post("/stores", response_model=schemas.StoreRead)

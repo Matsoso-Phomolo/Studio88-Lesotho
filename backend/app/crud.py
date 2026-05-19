@@ -318,7 +318,7 @@ def create_stripe_checkout_session(db: Session, session_data: schemas.StripeChec
     db_payment.payment_method = "Stripe"
     db_payment.payment_status = "Pending"
 
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    frontend_url = os.getenv("FRONTEND_ORIGIN") or os.getenv("FRONTEND_URL", "http://localhost:5173")
     stripe_secret_key = os.getenv("STRIPE_SECRET_KEY")
 
     if stripe and stripe_secret_key:

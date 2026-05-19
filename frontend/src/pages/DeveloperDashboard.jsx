@@ -123,7 +123,7 @@ export default function DeveloperDashboard({ user }) {
                 Database backups, user provisioning, seed scripts, and API diagnostics can be managed from backend tools.
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-neutral-300">
-                Current environment: local development at http://127.0.0.1:8000
+                Current environment: {import.meta.env.VITE_API_BASE_URL || "API URL not configured"}
               </div>
             </CardContent>
           </Card>

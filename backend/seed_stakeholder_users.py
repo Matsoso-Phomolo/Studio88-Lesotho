@@ -73,6 +73,13 @@ STAKEHOLDER_USERS = [
         "role": "DEVELOPER",
         "store_id": None,
     },
+    {
+        "full_name": "Matsoso Phomolo",
+        "email": "matsoso.it@studio88.co.ls",
+        "password": DEFAULT_PASSWORD,
+        "role": "DEVELOPER",
+        "store_id": None,
+    },
 ]
 
 

@@ -1,17 +1,70 @@
-# Studio 88 Lesotho System
+# Studio 88 Lesotho
 
-Operational retail system for Studio 88 Lesotho with role-separated dashboards, branch stock, orders, checkout, payments, receipts, warranty support, and stakeholder authentication.
+Professional retail management and branch operations platform for Studio 88 Lesotho.
 
-## Run Locally
+## Features
+
+- Role-separated dashboards
+- Executive analytics
+- Branch management
+- Customer shopping experience
+- JWT authentication
+- Secure checkout
+- Stripe integration
+- M-Pesa support
+- EcoCash support
+- Bank card payments
+- Order lifecycle management
+- Receipt generation
+- Warranty validation
+- Promotions and stock visibility
+- Low-stock monitoring
+
+## Tech Stack
+
+Frontend:
+
+- React
+- Vite
+- Recharts
+
+Backend:
+
+- FastAPI
+- PostgreSQL
+- SQLAlchemy
+- JWT Authentication
+
+Payments:
+
+- Stripe
+- M-Pesa
+- EcoCash
+- Bank Card
+
+Deployment:
+
+- Frontend -> Vercel
+- Backend -> Render
+
+## Screenshots
+
+- Login page - screenshot placeholder
+- Executive dashboard - screenshot placeholder
+- Manager dashboard - screenshot placeholder
+- Customer dashboard - screenshot placeholder
+- Checkout page - screenshot placeholder
+
+## Local Development
 
 Backend:
 
 ```powershell
 cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload
 ```
 
 Frontend:
@@ -22,11 +75,12 @@ npm install
 npm run dev
 ```
 
-Open the frontend at `http://localhost:5173`.
+Environment variables:
 
-## Default Stakeholders
+- Backend: `DATABASE_URL`, `JWT_SECRET_KEY`, `STRIPE_SECRET_KEY`, `FRONTEND_ORIGIN`
+- Frontend: `VITE_API_BASE_URL`
 
-Seed the database before logging in:
+Seed local data:
 
 ```powershell
 cd backend
@@ -34,15 +88,34 @@ python seed_initial_retail_data.py
 python seed_stakeholder_users.py
 ```
 
-Main accounts use `admin123` during local development:
+## Deployment
 
-- Executive: `puleng.executive@studio88.co.ls`
-- Developer: `matsoso.dev@studio88.co.ls`
-- Managers: `firstname.manager@studio88.co.ls`
+Render backend:
 
-## Notes
+- Root directory: `backend`
+- Build command: `pip install -r requirements.txt`
+- Start command: `uvicorn app.main:app --host 0.0.0.0 --port 10000`
+- Health check: `/health`
 
-- Orders are not refundable.
-- Warranty applies according to store policy.
-- Receipt is required for warranty claims.
-- Stripe support is test-mode only and requires Stripe environment variables.
+Vercel frontend:
+
+- Root directory: `frontend`
+- Framework: Vite
+- Build command: `npm run build`
+- Output directory: `dist`
+
+Production environment variables:
+
+- Render: `DATABASE_URL`, `JWT_SECRET_KEY`, `STRIPE_SECRET_KEY`, `FRONTEND_ORIGIN`
+- Vercel: `VITE_API_BASE_URL`
+
+## Security
+
+- JWT authentication protects operational routes.
+- Role-based access control separates executive, developer, manager, and customer views.
+- Manager branch isolation prevents managers from viewing or updating other branches.
+- Payment flows do not store card numbers, CVVs, mobile money PINs, or bank details.
+
+## License
+
+Educational / Portfolio use.
