@@ -10,7 +10,7 @@ from app.database import SessionLocal, engine, Base
 from app import models, schemas, crud
 from app.services.production_seed import seed_production_data
 from app.services.retail_ai import build_stock_recommendations
-from app.utils.security import create_access_token, decode_access_token
+from app.utils.security import create_access_token, decode_access_token, hash_password
 
 Base.metadata.create_all(bind=engine)
 
@@ -87,6 +87,15 @@ def require_roles(*roles: str):
     return checker
 
 
+def require_seed_secret(x_seed_secret: Optional[str] = Header(default=None, alias="x-seed-secret")):
+    seed_secret = os.getenv("SEED_SECRET")
+    if not seed_secret:
+        raise HTTPException(status_code=503, detail="Seed/admin debug endpoints are disabled")
+    if x_seed_secret != seed_secret:
+        raise HTTPException(status_code=403, detail="Invalid seed secret")
+    return True
+
+
 @app.get("/")
 def root():
     return {"message": "Studio 88 Lesotho backend is running"}
@@ -99,19 +108,55 @@ def health():
 
 @app.post("/admin/seed-production")
 def seed_production(
-    x_seed_secret: Optional[str] = Header(default=None, alias="x-seed-secret"),
+    seed_secret_ok: bool = Depends(require_seed_secret),
     db: Session = Depends(get_db),
 ):
     if os.getenv("ENABLE_PRODUCTION_SEED", "false").lower() != "true":
         raise HTTPException(status_code=503, detail="Production seed endpoint is disabled")
 
-    seed_secret = os.getenv("SEED_SECRET")
-    if not seed_secret:
-        raise HTTPException(status_code=503, detail="Production seed endpoint is disabled")
-    if x_seed_secret != seed_secret:
-        raise HTTPException(status_code=403, detail="Invalid seed secret")
-
     return seed_production_data(db)
+
+
+@app.get("/admin/debug-users")
+def debug_users(
+    seed_secret_ok: bool = Depends(require_seed_secret),
+    db: Session = Depends(get_db),
+):
+    users = db.query(models.User).order_by(models.User.email.asc()).all()
+    return [
+        {
+            "email": user.email,
+            "role": user.role,
+            "store_id": user.store_id,
+            "is_active": user.is_active,
+            "created_at": user.created_at,
+        }
+        for user in users
+    ]
+
+
+@app.post("/admin/reset-password")
+def reset_password(
+    payload: schemas.PasswordResetRequest,
+    seed_secret_ok: bool = Depends(require_seed_secret),
+    db: Session = Depends(get_db),
+):
+    user = crud.get_user_by_email(db, payload.email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.is_active = True
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "email": user.email,
+        "role": user.role,
+        "store_id": user.store_id,
+        "is_active": user.is_active,
+        "password_reset": True,
+    }
 
 
 @app.post("/stores", response_model=schemas.StoreRead)

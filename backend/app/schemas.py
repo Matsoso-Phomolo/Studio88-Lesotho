@@ -197,6 +197,11 @@ class WarrantyStatusUpdate(BaseModel):
     status: str
 
 
+class PasswordResetRequest(BaseModel):
+    email: str
+    new_password: str
+
+
 class ProductBarcodeUpdate(BaseModel):
     barcode: Optional[str] = None
 
