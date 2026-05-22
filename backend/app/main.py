@@ -108,7 +108,10 @@ def seed_production(
     if x_seed_secret != seed_secret:
         raise HTTPException(status_code=403, detail="Invalid seed secret")
 
-    return seed_production_data(db)
+    try:
+        return seed_production_data(db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Seed failed: {type(exc).__name__}: {exc}")
 
 
 @app.post("/stores", response_model=schemas.StoreRead)
