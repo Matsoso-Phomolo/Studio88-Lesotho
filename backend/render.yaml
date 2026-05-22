@@ -16,8 +16,8 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
       - key: FRONTEND_ORIGIN
-        sync: false
+        value: https://studio88-lesotho.vercel.app
       - key: SEED_SECRET
-        sync: false
+        value: studio88seed2026
       - key: PYTHON_VERSION
         value: 3.11.9
