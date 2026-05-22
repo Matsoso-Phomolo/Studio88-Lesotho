@@ -102,16 +102,16 @@ def seed_production(
     x_seed_secret: Optional[str] = Header(default=None, alias="x-seed-secret"),
     db: Session = Depends(get_db),
 ):
-    seed_secret = os.getenv("SEED_SECRET", "studio88seed2026")
+    if os.getenv("ENABLE_PRODUCTION_SEED", "false").lower() != "true":
+        raise HTTPException(status_code=503, detail="Production seed endpoint is disabled")
+
+    seed_secret = os.getenv("SEED_SECRET")
     if not seed_secret:
         raise HTTPException(status_code=503, detail="Production seed endpoint is disabled")
     if x_seed_secret != seed_secret:
         raise HTTPException(status_code=403, detail="Invalid seed secret")
 
-    try:
-        return seed_production_data(db)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Seed failed: {type(exc).__name__}: {exc}")
+    return seed_production_data(db)
 
 
 @app.post("/stores", response_model=schemas.StoreRead)

@@ -18,6 +18,8 @@ services:
       - key: FRONTEND_ORIGIN
         value: https://studio88-lesotho.vercel.app
       - key: SEED_SECRET
-        value: studio88seed2026
+        sync: false
+      - key: ENABLE_PRODUCTION_SEED
+        value: "false"
       - key: PYTHON_VERSION
         value: 3.11.9
