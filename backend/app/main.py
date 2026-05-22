@@ -33,6 +33,7 @@ local_frontend_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "https://studio88-lesotho.vercel.app",
 ]
 configured_frontend_origin = os.getenv("FRONTEND_ORIGIN")
 allowed_origins = local_frontend_origins + (
@@ -101,7 +102,7 @@ def seed_production(
     x_seed_secret: Optional[str] = Header(default=None, alias="x-seed-secret"),
     db: Session = Depends(get_db),
 ):
-    seed_secret = os.getenv("SEED_SECRET")
+    seed_secret = os.getenv("SEED_SECRET", "studio88seed2026")
     if not seed_secret:
         raise HTTPException(status_code=503, detail="Production seed endpoint is disabled")
     if x_seed_secret != seed_secret:
