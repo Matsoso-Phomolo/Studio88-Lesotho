@@ -1,8 +1,10 @@
 from datetime import date, timedelta
 
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session, selectinload
 
 from app import models, schemas, crud
+from app.database import engine
 from app.services.stock_service import calculate_stock_status
 from app.utils.security import hash_password, verify_password
 
@@ -49,6 +51,45 @@ STOCK_QUANTITIES = [
     [14, 20, 10, 6, 8],
     [12, 9, 15, 19, 5],
 ]
+
+
+def _add_column_if_missing(table_name: str, column_name: str, definition: str) -> None:
+    inspector = inspect(engine)
+    if table_name not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns(table_name)}
+    if column_name in columns:
+        return
+    with engine.begin() as connection:
+        connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"))
+
+
+def ensure_production_seed_schema() -> None:
+    _add_column_if_missing("stores", "manager_name", "VARCHAR(100)")
+    _add_column_if_missing("stores", "contact_phone", "VARCHAR(30)")
+    _add_column_if_missing("stores", "is_active", "BOOLEAN DEFAULT TRUE")
+    _add_column_if_missing("stores", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+    _add_column_if_missing("products", "category", "VARCHAR(100)")
+    _add_column_if_missing("products", "description", "TEXT")
+    _add_column_if_missing("products", "barcode", "VARCHAR(100)")
+    _add_column_if_missing("products", "image_url", "TEXT")
+    _add_column_if_missing("products", "is_new", "BOOLEAN DEFAULT FALSE")
+    _add_column_if_missing("products", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+    _add_column_if_missing("stock", "status", "VARCHAR(30) DEFAULT 'Available'")
+    _add_column_if_missing("stock", "last_updated", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+    _add_column_if_missing("promotions", "store_id", "INTEGER")
+    _add_column_if_missing("promotions", "start_date", "DATE")
+    _add_column_if_missing("promotions", "end_date", "DATE")
+    _add_column_if_missing("promotions", "title", "VARCHAR(150)")
+    _add_column_if_missing("promotions", "is_active", "BOOLEAN DEFAULT TRUE")
+    _add_column_if_missing("promotions", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+    _add_column_if_missing("users", "store_id", "INTEGER")
+    _add_column_if_missing("users", "is_active", "BOOLEAN DEFAULT TRUE")
+    _add_column_if_missing("users", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 
 
 def _safe_password_hash(existing_hash: str | None) -> bool:
@@ -189,6 +230,8 @@ def _upsert_promotion(
 
 
 def seed_production_data(db: Session) -> dict:
+    ensure_production_seed_schema()
+
     summary = {
         "stores": {"created": 0, "updated": 0},
         "users": {"created": 0, "updated": 0},
