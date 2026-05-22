@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 from app import models, schemas, crud
 from app.database import engine
 from app.services.stock_service import calculate_stock_status
-from app.utils.security import hash_password, verify_password
+from app.utils.security import hash_password
 
 
 DEFAULT_PASSWORD = "admin123"
@@ -92,15 +92,6 @@ def ensure_production_seed_schema() -> None:
     _add_column_if_missing("users", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 
 
-def _safe_password_hash(existing_hash: str | None) -> bool:
-    if not existing_hash:
-        return False
-    try:
-        return verify_password(DEFAULT_PASSWORD, existing_hash)
-    except ValueError:
-        return False
-
-
 def _upsert_store(db: Session, store_data: dict) -> str:
     store = db.query(models.Store).filter(models.Store.id == store_data["id"]).first()
     if store:
@@ -121,8 +112,7 @@ def _upsert_user(db: Session, user_data: dict) -> str:
         user.role = user_data["role"]
         user.store_id = user_data["store_id"]
         user.is_active = True
-        if not _safe_password_hash(user.password_hash):
-            user.password_hash = hash_password(DEFAULT_PASSWORD)
+        user.password_hash = hash_password(DEFAULT_PASSWORD)
         return "updated"
 
     db.add(
